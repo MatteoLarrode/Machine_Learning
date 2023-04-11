@@ -195,6 +195,15 @@ heatmap <- ggplot(data = confusion_df, aes(x = Predicted, y = Actual, fill = Fre
 heatmap
 
 ```
+```{r}
+# Calculate the accuracy
+correct_predictions <- sum(diag(confusion_matrix))
+total_samples <- sum(confusion_matrix)
+accuracy <- correct_predictions / total_samples
+
+# Print the accuracy
+cat("Accuracy:", round(accuracy * 100, 2), "%\n")
+```
 
 ## Lasso logit classifier
 
@@ -202,30 +211,48 @@ Lasso (Least Absolute Selection and Shrinkage Operator) is effective for feature
 
 ```{r}
 #Lasso Logit Classifier --------
+
+#create matrix by binding the sentiment column from the tweets with the document-term matrix
 dfm_tweets_mod <- as.matrix(cbind(tweets$sentiment, dfm_tweets))
 
-#cross-validation
+#generate vector of random row indices for cross-validation (without replacement)
 cv.rows <- sample(nrow(dfm_tweets_mod),(nrow(dfm_tweets_mod)/2))
-cv.data <- dfm_tweets_mod[cv.rows,]
-test.data <- dfm_tweets_mod[-cv.rows,]
+cv.data <- dfm_tweets_mod[cv.rows,] #training data
+test.data <- dfm_tweets_mod[-cv.rows,] #test data
 
+#cross-validation for the lasso logit classifier 
+#performance measure is classification accuracy (type.measure="class")
 lasso.tweets <- cv.glmnet(x=cv.data[,2:ncol(dfm_tweets_mod)],y=cv.data[,1],
                           family="binomial",type.measure="class")
 
 #classify test set
 tweets.preds <- predict(lasso.tweets,test.data[,2:ncol(dfm_tweets_mod)],type='class')
-
-#ten words that most predict negative and positive reviews
-lasso.coeffs <- as.matrix(coef(lasso.tweets)[coef(lasso.tweets)[,1]!=0,])
-lasso.coeffs <- as.matrix(lasso.coeffs[order(lasso.coeffs[,1],decreasing = T),])
-#negative
-lasso.coeffs[1:10,]
-#positive
-lasso.coeffs[(nrow(lasso.coeffs)-10):nrow(lasso.coeffs),]
-
 ```
 
-Let's check the performance of this model:
+Using the coefficients of the lasso logit model, we can determine the words that most strongly predict negative or positive sentiment in the classifier.
+
+```{r}
+
+#extract coefficients of the lasso logit model
+#subset coefficients by selecting only the rows where the coefficient values are not equal to zero, as the lasso regularization can set some coefficients to exactly zero.
+lasso.coeffs <- as.matrix(coef(lasso.tweets)[coef(lasso.tweets)[,1]!=0,])
+
+#subset matrix by ordering it based on the values of the coefficients
+lasso.coeffs <- as.matrix(lasso.coeffs[order(lasso.coeffs[,1],decreasing = T),])
+```
+
+Words that has the most weight on predicting negative tweets were:
+
+```{r}
+lasso.coeffs[2:10,]
+```
+On the other hand, words that were the most likely to be in a positive tweet were:
+
+```{r}
+print(lasso.coeffs[(nrow(lasso.coeffs)-10):nrow(lasso.coeffs),])
+```
+
+Finally let's check the performance of this model, and compare it to the dictionary.
 
 ```{r}
 # Create the confusion matrix
@@ -257,8 +284,15 @@ heatmap2 <- ggplot(data = confusion_df2, aes(x = Predicted, y = Actual, fill = F
 
 heatmap2
 ```
+```{r}
+# Calculate the accuracy
+correct_predictions <- sum(diag(confusion_matrix2))
+total_samples <- sum(confusion_matrix2)
+accuracy <- correct_predictions / total_samples
 
-
+# Print the accuracy
+cat("Accuracy:", round(accuracy * 100, 2), "%\n")
+```
 Both classifiers display outstanding sensitivity rates, indicating great efficacy at identifying tweets expressing a negative sentiment. Their lower specificity uncovers a weaker accuracy in identifying positive tweets for both classifiers. Remarkably, the classifier based on supervised machine-learning outperforms its dictionary-based counterpart with a lower error rate, and better sensitivity and specificity.
 
 The poorer quality of the dictionary-based classifier can be explained by multiple factors. Dictionary-based methods are limited by the difficulty to turn word proportions into a single measure. Also, the threshold at which a text is classified as positive or negative is unclear and subject to subjectivity. Finally, the greatest limitation of this method is in the dictionary itself. Context-specific dictionaries are laborious to build and the 20 words of the dictionary used in this report cannot capture accurately the sentiment of a diversity of customers. On the other hand, supervised learning, i.e., classification with a regularized logit model is better equipped to handle vast size of text data and is more reliable, thanks to its optimal feature selection. In fact, this technique based on machine-learning can be thought of as an improvement of the dictionary method, where the computer would first ‘learn’ the dictionary.
