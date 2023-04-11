@@ -48,46 +48,43 @@ dfm_tweets <- dfm_tweets0 %>%
   dfm_trim(min_docfreq = 5) %>% 
   dfm_remove(c("@united", "@usairways", "@americanair", "@southwestair", "@jetblue", "@virginamerica", "flight", "amp", "aa", "get", "now", "united", "jetblue", "us"))
 
-print("Document-Term Matrix after pre-processing")
-print(paste0("Number of tweets:", dim(dfm_tweets)[1]))
-print(paste0("Number of words: ", dim(dfm_tweets)[2]))
-
+cat("Document-Term Matrix after pre-processing\n", 
+    "Number of tweets:", dim(dfm_tweets)[1], 
+    "\nNumber of words: ", dim(dfm_tweets)[2])
 ```
 
 ## Word Usage Analysis
-```{r}
-#Word Usage Analysis ----------
 
-#overview
-print("Most used words: ")
-print(textstat_frequency(dfm_tweets, force=T)[1:15,1])
+### Sentiment
+```{r message=FALSE, warning=FALSE}
+# Get the frequency of terms in the document-term matrix
+freq <- textstat_frequency(dfm_tweets, force = TRUE)
+top_15_terms <- freq[1:15, 1]
 
-#proportion of each sentiment per airline
-tapply(tweets$sentiment, tweets$airline, table)
+cat("Top 15 most used words:\n", top_15_terms, sep = "\n")
+
+tweets <- tweets %>%
+  mutate(sentiment_long = ifelse(sentiment == 0, "Positive", "Negative"))
+
+# Compute the table of sentiment frequencies for each airline
+sentiment_table <- tapply(tweets$sentiment_long, tweets$airline, table)
+
+# Loop through each airline and print the proportion of each sentiment
+for (airline in names(sentiment_table)) {
+  cat("Airline:", airline, "\n")
+  sentiment_count <- sentiment_table[[airline]]
+  sentiment_prop <- prop.table(sentiment_count)
+  print(sentiment_prop)
+  cat("\n")
+}
 
 
-#1)words most associated with negative & positive sentiment
-bysentiment <- textstat_frequency(dfm_tweets,25,groups=sentiment, force=T)
-bysentiment$group[bysentiment$group=="0"] <- "Positive"
-bysentiment$group[bysentiment$group=="1"] <- "Negative"
+# Words most associated with negative & positive sentiment
+bysentiment <- textstat_frequency(dfm_tweets,25,groups=sentiment, force=T) %>%
+  mutate(sentiment_long = ifelse(group == 0, "Positive", "Negative"))
 
-ggplot(bysentiment[bysentiment$group=="Positive"], 
-       aes(x=frequency,y=reorder(feature,frequency))) +
-  facet_wrap(~group, scales="free") +
-  geom_point() + 
-  ylab("") +
-  xlab("Frequency")+
-  ggtitle("Words Most Associated with Positive Sentiment")
 
-ggplot(bysentiment[bysentiment$group=="Negative"], 
-       aes(x=frequency,y=reorder(feature,frequency))) +
-  facet_wrap(~group, scales="free") +
-  geom_point() + 
-  ylab("") +
-  xlab("Frequency")+
-  ggtitle("Words Most Associated with Negative Sentiment")
-
-#wordcloud
+#Wordclouds
 pos_tweets <- dfm_tweets[dfm_tweets$sentiment == "0",]
 textplot_wordcloud(pos_tweets,
                    min_size = 0.5,
@@ -97,6 +94,7 @@ textplot_wordcloud(pos_tweets,
                    max_words=50)
 
 neg_tweets <- dfm_tweets[dfm_tweets$sentiment == "1",]
+
 textplot_wordcloud(neg_tweets,
                    min_size = 0.5,
                    max_size=6,
@@ -106,7 +104,14 @@ textplot_wordcloud(neg_tweets,
 
 
 ```
-Some words are commonly associated with a positive or negative sentiment. Words of gratitude like “thanks” and “appreciate”, along with “awesome”, “great” and “amazing” are found in many positive tweets.
+Some words are commonly associated with a positive or negative sentiment. Words of gratitude like “thanks” and “appreciate”, along with “awesome”, “great” and “amazing” are found in many positive tweets. On the other hand, the language associated to delay or cancellation (“hours”, “cancelled”, “hold”, “delayed”, “time”) are commonly associated with negative tweets.
+
+### Sentiment by airline
+
+While commonly used words associated with a positive sentiment are similar across airlines, an overview of how negative word usage differs across airlines can help reveal specific customer complaints. For example, American Airlines, Southwest, and US Airways customers seemed to have troubles with cancelled flights and help service. JetBlue and United customers mostly complain about delays. Virgin America customers seem to dislike the website of the company. Many negative tweets associated to United mention “bag”, hinting at problems of luggage management by the company.
 
 
-On the other hand, the language associated to delay or cancellation (“hours”, “cancelled”, “hold”, “delayed”, “time”) are commonly associated with negative tweets.
+
+
+
+
