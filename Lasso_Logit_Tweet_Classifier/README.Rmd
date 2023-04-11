@@ -1,0 +1,112 @@
+---
+title: "Tweet Classifier"
+author: "Matteo Larrode"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Report on the Sentiment About Airlines Using Text Data Analysis on Tweets
+
+## Introduction
+This report analyzed more that 11,000 tweets to gauge customers’ sentiment towards the company and its major competitors. Word usage is compared between positive and negative tweets, and across airlines. Then, two predictive tools are built to classify them. A dictionary-based method and one using supervised machine-learning are compared to help the company respond better to customers in real time.
+
+```{r prep, include=FALSE}
+#Prep Work & Packages
+load("data/tweets.Rda")
+
+library(quanteda)
+library(quanteda.textstats)
+library(quanteda.textplots)
+library(tidyverse)
+library(glmnet)
+library(ggplot2)
+```
+
+## Text preparation
+
+Text preparation started with the removal of numbers, stopwords, punctuation, and symbols commonly used on Twitter. Very rarely used words were also removed to ease text data analysis. Term Frequency–Inverse Document Frequency (TF-IDF) weighting was carried out to help give an accurate picture of words that are most characteristic of tweets, and diminish the importance of uninformative words. TF-IDF weightings were carried out after the different groupings of documents as a TF-IDF weighted document-term matrix should not be amalgamated.
+
+```{r text prep, warning=FALSE}
+#Text Preparation ----------
+tweetCorpus <- corpus(tweets$text, docvars = tweets)
+
+#turn corpus into document-term matrix; make everything lower-case, remove numbers, punctuation and stopwords; TF-IDF weighting; remove airline names
+dfm_tweets0 <- tweetCorpus %>%
+  tokens(remove_numbers=T,
+         remove_punct=T,
+         include_docvars=T,
+         remove_symbols = T) %>%
+  tokens_remove(stopwords("en")) %>%
+  dfm(tolower=T)%>%
+  dfm_tfidf()
+
+#eliminate rare words & other words
+dfm_tweets <- dfm_tweets0 %>% 
+  dfm_trim(min_docfreq = 5) %>% 
+  dfm_remove(c("@united", "@usairways", "@americanair", "@southwestair", "@jetblue", "@virginamerica", "flight", "amp", "aa", "get", "now", "united", "jetblue", "us"))
+
+print("Document-Term Matrix after pre-processing")
+print(paste0("Number of tweets:", dim(dfm_tweets)[1]))
+print(paste0("Number of words: ", dim(dfm_tweets)[2]))
+
+```
+
+## Word Usage Analysis
+```{r}
+#Word Usage Analysis ----------
+
+#overview
+print("Most used words: ")
+print(textstat_frequency(dfm_tweets, force=T)[1:15,1])
+
+#proportion of each sentiment per airline
+tapply(tweets$sentiment, tweets$airline, table)
+
+
+#1)words most associated with negative & positive sentiment
+bysentiment <- textstat_frequency(dfm_tweets,25,groups=sentiment, force=T)
+bysentiment$group[bysentiment$group=="0"] <- "Positive"
+bysentiment$group[bysentiment$group=="1"] <- "Negative"
+
+ggplot(bysentiment[bysentiment$group=="Positive"], 
+       aes(x=frequency,y=reorder(feature,frequency))) +
+  facet_wrap(~group, scales="free") +
+  geom_point() + 
+  ylab("") +
+  xlab("Frequency")+
+  ggtitle("Words Most Associated with Positive Sentiment")
+
+ggplot(bysentiment[bysentiment$group=="Negative"], 
+       aes(x=frequency,y=reorder(feature,frequency))) +
+  facet_wrap(~group, scales="free") +
+  geom_point() + 
+  ylab("") +
+  xlab("Frequency")+
+  ggtitle("Words Most Associated with Negative Sentiment")
+
+#wordcloud
+pos_tweets <- dfm_tweets[dfm_tweets$sentiment == "0",]
+textplot_wordcloud(pos_tweets,
+                   min_size = 0.5,
+                   max_size=6,
+                   color = "darkblue",
+                   comparison=FALSE, 
+                   max_words=50)
+
+neg_tweets <- dfm_tweets[dfm_tweets$sentiment == "1",]
+textplot_wordcloud(neg_tweets,
+                   min_size = 0.5,
+                   max_size=6,
+                   color = "red",
+                   comparison=FALSE, 
+                   max_words=50)
+
+
+```
+Some words are commonly associated with a positive or negative sentiment. Words of gratitude like “thanks” and “appreciate”, along with “awesome”, “great” and “amazing” are found in many positive tweets.
+
+
+On the other hand, the language associated to delay or cancellation (“hours”, “cancelled”, “hold”, “delayed”, “time”) are commonly associated with negative tweets.
