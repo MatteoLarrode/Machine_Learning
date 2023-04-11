@@ -23,6 +23,7 @@ library(quanteda.textplots)
 library(tidyverse)
 library(glmnet)
 library(ggplot2)
+library(gt)
 ```
 
 ## Text preparation
@@ -108,10 +109,106 @@ Some words are commonly associated with a positive or negative sentiment. Words 
 
 ### Sentiment by airline
 
-While commonly used words associated with a positive sentiment are similar across airlines, an overview of how negative word usage differs across airlines can help reveal specific customer complaints. For example, American Airlines, Southwest, and US Airways customers seemed to have troubles with cancelled flights and help service. JetBlue and United customers mostly complain about delays. Virgin America customers seem to dislike the website of the company. Many negative tweets associated to United mention “bag”, hinting at problems of luggage management by the company.
+While commonly used words associated with a positive sentiment are similar across airlines, an overview of how negative word usage differs across airlines can help reveal specific customer complaints.
+
+```{r airline_sentiment}
+#most-used words for each airline (positive & negative)
+byairline_pos <- textstat_frequency(pos_tweets, 5, groups=airline, force=TRUE)
+
+ggplot(byairline_pos, 
+       aes(x=frequency,y=reorder(feature,frequency))) +
+  facet_wrap(~group, scales="free") +
+  geom_point() + 
+  labs(title = "Positive Words for Each Airline",
+       y=" ",
+       x = "Frequency")
+
+
+byairline_neg <- textstat_frequency(neg_tweets, 5, groups=airline, force=TRUE)
+
+ggplot(byairline_neg, 
+       aes(x=frequency,y=reorder(feature,frequency))) +
+  facet_wrap(~group, scales="free") +
+  geom_point() + 
+  labs(title = "Negative Words for Each Airline",
+       y=" ",
+       x = "Frequency")
+
+
+```
+American Airlines, Southwest, and US Airways customers seemed to have troubles with cancelled flights and help service. JetBlue and United customers mostly complain about delays. Virgin America customers seem to dislike the website of the company. Many negative tweets associated to United mention “bag”, hinting at problems of luggage management by the company.
+
+## Dictionary-based classifier
+
+A classic method to judge the sentiment of texts is to use a dictionary. For sentiment analysis, the dictionary includes language associated with positive and negative emotions. This list of pre-selected words can be used to classify tweets by analyzing the proportion of words associated with those emotions.
+
+The customized dictionary includes fundamental words of sentiment analysis. It also includes jargon specific to airlines to fit the context in which the dictionary is used. The selection of words is based on the analysis of their frequency in tweets after they were grouped by sentiment and TF-IDF weighted.
+
+```{r}
+#create dictionary
+neg.words <- c("bad","worst", "terrible" , "cancelled","hold", "hours" ,"time", "delayed","gate", "phone") 
+pos.words <- c("thanks", "thank", "great", "love", "awesome","much", "good", "best", "appreciate", "amazing")
+
+dico <- dictionary(list(negative = neg.words, positive = pos.words))
+
+#get sentiment score
+sentiment_dico <- dfm_lookup(dfm_tweets,dictionary=dico)
+sentiment_dico <- convert(sentiment_dico,to="data.frame")
+
+cat("Most negative Tweet: ", tweets$text[which.max(sentiment_dico$negative)],
+    "\n\nMost positive Tweet: ", tweets$text[which.max(sentiment_dico$positive)])
+
+
+#classify the tweets
+sentiment_dico$score <- ifelse((sentiment_dico$positive - sentiment_dico$negative)>0,0,1)
+```
+
+Let's check the performance of the dictionary classifier!
+
+```{r}
+# Create the confusion matrix
+confusion_matrix <- table(sentiment_dico$score, tweets$sentiment)
+
+# Convert the confusion matrix to a data frame
+confusion_df <- as.data.frame.matrix(confusion_matrix)
+
+confusion_df <- confusion_df %>%
+  #convert row names to a new column
+  rownames_to_column(var = "Predicted") %>%
+  #convert column names to a new row
+  pivot_longer(cols = -Predicted, names_to = "Actual", values_to = "Frequency") 
+
+# Convert factor levels to character
+confusion_df$Predicted <- as.character(confusion_df$Predicted)
+confusion_df$Actual <- as.character(confusion_df$Actual)
+
+#create heatmap
+heatmap <- ggplot(data = confusion_df, aes(x = Predicted, y = Actual, fill = Frequency, label = Frequency)) +
+  geom_tile() +
+  geom_text(size = 12, color = "white") +
+  labs(title = "Confusion Matrix", x = "Predicted", y = "Actual", fill = "Frequency") +
+  theme_minimal() +
+  scale_fill_gradient(low = "lightblue", high = "darkblue") +
+  guides(fill = "none")
+
+
+heatmap
+
+```
+
+## Lasso logit classifier
+
+Lasso (Least Absolute Selection and Shrinkage Operator) is effective for feature selection by minimizing squared errors with a penalty for complexity. Cross-validation in a training set selected the optimal logit lasso model, which was then used to classify tweets in the test set. This classifier is based on a supervised machine- learning technique whereby the model ‘learns’ which words predicts the sentiment embedded in tweets.
 
 
 
+Both classifiers display outstanding sensitivity rates, indicating great efficacy at identifying tweets expressing a negative sentiment. Their lower specificity uncovers a weaker accuracy in identifying positive tweets for both classifiers. Remarkably, the classifier based on supervised machine-learning outperforms its dictionary- based counterpart with a lower error rate, and better sensitivity and specificity.
+
+The poorer quality of the dictionary-based classifier can be explained by multiple factors. Dictionary-based methods are limited by the difficulty to turn word proportions into a single measure. Also, the threshold at which a text is classified as positive or negative is unclear and subject to subjectivity. Finally, the greatest limitation of this method is in the dictionary itself. Context-specific dictionaries are laborious to build and the 20 words of the dictionary used in this report cannot capture accurately the sentiment of a diversity of customers. On the other hand, supervised learning, i.e., classification with a regularized logit model is better equipped to handle vast size of text data and is more reliable, thanks to its optimal feature selection. In fact, this technique based on machine-learning can be thought of as an improvement of the dictionary method, where the computer would first ‘learn’ the dictionary.
+
+## Conclusion
+
+Despite its limitations, including the large cost and subjectivity of the necessary pre-labelling of many tweets to supervise the model, using the classifier based on the lasso logit method should be favoured by the company to classify future tweets.
 
 
 
